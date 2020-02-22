@@ -1,0 +1,251 @@
+#include <cmath>
+#include "TGraph.h"
+#include "TApplication.h"
+#include "TStyle.h"
+#include "TGClient.h"
+#include "TCanvas.h"
+#include <iostream>
+#include <vector>
+#include <array>
+#include "TLegend.h"
+#include "TMultiGraph.h"
+#include "gsl_sf_bessel.h"
+
+const double EPSILON = 5.9; //milli eV, meV
+const double ALPHA = 6.12;
+const double RHO = 3.57;  //Angstrom
+const double K = 6.12; //(meV)^-1 (rho)^-2  and is equivalent to 2m/hbar^2
+const double C = 1; //HO example where h^2/m = 1 
+const double C1 = pow(EPSILON*ALPHA/25,1/2); //Analytical Constant for small r
+const int N = 1000; //How many points in the graph for LJ potential
+const int ESCAN = 500;
+const int LSCAN = 6; //beyond l=6, particle doesn't feel potential
+const double EMAX = 3.5; //meV   should be 3.5 meV
+const double EMIN = 0.1; //meV bounds energy scans
+const double RMIN = 2.7; //Angstroms, and is where LJ is dominated by r^(-12)
+const double R1 = 12; // Angstroms
+const int STEPS = 1000;
+const int STEPS2 = STEPS + 2;
+
+
+
+using namespace std;
+
+double ljPotential(double radius);
+double firstStep(double psi0,double psi0prime,double h,double Energy,double r,
+		 double l);
+std::array<std::array<double,2>,STEPS2> Numerov(double psi0,double psi0prime,
+					       double steps, double a,double b,
+					       double Energy, double l);
+double kVector(double r,double Energy,double l);
+double phaseShift(double Energy,double l,double h);
+double waveNumber(double Energy);
+double ApproxLJ(double r);
+double ApproxLJDerivative(double r);
+double CalcStepSize(double Energy);
+
+
+int main(int argc, char **argv){
+  //Want to plot the lj potential in main over the range 3-10 (Angstrom)
+  TApplication theApp("App",&argc,argv);
+  UInt_t dh = gClient->GetDisplayHeight()/2;
+  UInt_t dw = 1.1*dh;
+
+  TCanvas *c1 = new TCanvas("c1","Canvas",dw,dh);
+
+  //loop over energies
+  //   from there, loop over angular momentum 0 to 6
+  //       Calculate phase shift for each E,l combo
+  //          To do this, integrate from r near zero to find u(r1),u(r2)
+  //               Be careful, make sure r2 is 1/4*lambda away from r1
+  //               Lambda is defined from the wavenumber k which is =~ E
+  //          Calc u(0) and u(1) from small r solution at r0 and r0+h
+  //          Use those values to get psi0 and psi1 using Eqn. A.54
+  //  We'll need phase shift function, and a function to calculate psi1
+  // Also a waveNumber function
+
+  TGraph *g = new TGraph();
+  double step = (EMAX - EMIN)/ESCAN; 
+  for(int i = 0;i< ESCAN; i++){
+    double Energy = EMIN + step*i;
+    double CrossSection = 0.0;
+    double k = pow(K*Energy,0.5);
+    double h = (R1-RMIN)/STEPS;
+    for(int j = 0;j< LSCAN;j++){
+      double phase  = phaseShift(Energy,j,h);
+      CrossSection += (4.0*M_PI/(k*k))*(2*j+1)*phase;
+    }
+    g->SetPoint(g->GetN(),Energy,CrossSection);
+    //sum over phases to get cross section at each E;
+  }
+
+  c1->cd(1);
+  g->Draw("ac");
+
+
+
+
+  /**Only useful for graphing the HO potential (need to change K in kVector sol
+  TGraph *g = new TGraph();
+  TGraph *expected = new TGraph();
+
+  double psi0 = 0;
+  double psi1= pow(r,l+1);
+  double a = 0.0;
+  double b = 4.0;
+  std::array<std::array<double,2>,STEPS> sol = Numerov(psi0,psi1,STEPS,a,b,3.0,0);
+  double h = (a-b)/STEPS;
+  double Interror = 0.0;
+  for(unsigned int i = 0;i<sol.size();i++){
+    g->SetPoint(g->GetN(),sol[i][0],sol[i][1]);
+    double r = sol[i][0];
+    double expectedVal = r*exp(h*h/2)*exp(-r*r/2);
+    Interror += fabs(expectedVal - sol[i][1]);
+    expected->SetPoint(expected->GetN(),r,expectedVal);
+  }
+  printf("Total Integrated Error For HO WF: %e\n",Interror);
+  c1->cd(1);
+  g->SetLineColor(2);
+  expected->SetLineColor(3);
+  g->SetTitle("Radial Wavefunction 3d-HO model;radius;psi");
+  g->Draw("a*");
+  expected->SetTitle("Analytic Solution");
+  expected->Draw("same");
+  c1->BuildLegend();
+  */
+
+  /*  If you want to create the LJ plot, uncommment out
+  TGraph *g = new TGraph();
+  double start = 3;  //Units are in Angstrom
+  double end = 10;   //Units are in Angstrom
+  for(int i = 0;i<N;i++){
+    double x = start +(end-start)*((double)i)/N;
+    double y = ljPotential(x);
+    g->SetPoint(g->GetN(),x,y);
+  }
+
+  g->SetTitle("LJ Potential; Radius (Angstrom); (meV)");
+  g->SetLineColor(2);
+  c1->cd(1);
+  g->Draw("ca");
+  */
+
+  cout << "Press ^c to exit" << endl;
+  theApp.SetIdleTimer(120,".q");
+  theApp.Run();
+  
+}
+
+
+double ljPotential(double radius){
+  /**  Uncomment out for Lennard Jones Potential
+   */
+  double term1 = pow((RHO/radius),6);
+  double term2 = pow(term1,2);
+  double retval = EPSILON*(term2-2*term1);
+  //double retval = pow(radius,2);
+  return retval;
+}
+
+double firstStep(double psi0,double psi0prime,double h,double Energy,double r,
+		 double l){
+  double term1 = (2.0+(5.0*h*h*kVector(r,Energy,l)/6.0));
+  double term2 = (1.0-(h*h*kVector(r-h,Energy,l)/12.0));
+  double term3 = (1.0-(h*h*kVector(r-h,Energy,l)/6.0));
+  double term4 = (1.0-(h*h*kVector(r+h,Energy,l)/12.0));
+  double term5 = (1.0-(h*h*kVector(r-h,Energy,l)/6.0));
+  double term6 = (1.0-(h*h*kVector(r-h,Energy,l)/12.0));
+  double term7 = (1.0-(h*h*kVector(r+h,Energy,l)/6.0));
+  double psi1 = (term1*term2*psi0 + 2*h*psi0prime*term3);  //eval numerator
+  psi1 = psi1/(term4*term5 + term6*term7); // divide by denominator
+  return psi1;
+}
+
+std::array<std::array<double,2>,STEPS2> Numerov(double psi0,double psi1,
+					       double steps, double a,double b,
+					       double Energy,double l){
+
+  //need to add l, in order to get magnitude of centrifugal force
+  std::array<std::array<double,2>,STEPS2> values;
+  double numerov = 0.0;
+  double h = (b-a)/steps;
+
+
+  /** Check that the Wavefunction is being calculated correctly:  */
+
+
+  //First Step Calculation
+  double r = a;
+  
+  values[0][0] = r;
+  values[0][1] = psi0;
+  values[1][0] = r+h;
+  values[1][1] = psi1;
+  for(int i = 0; i < steps; i++){
+    r = (a+2*h) + i*h;
+    double k1 = kVector(r-h,Energy,l);
+    double k2 = kVector(r-2*h,Energy,l);
+    double k3 = kVector(r,Energy,l);
+    double numerator = 2*(1-(5.0/12.0)*h*h*k1)*psi1 -(1+(1.0/12.0)*h*h*k2)*psi0;
+    double denominator = 1 + (1.0/12.0)*h*h*k3;    
+    numerov = (numerator/denominator);
+    values[i+2][0] = r;
+    values[i+2][1] = numerov;
+    psi0 = psi1;
+    psi1 = numerov;
+  }
+
+ 
+  return values;
+}
+
+
+double kVector(double r,double Energy,double l){
+  if(r<=0){
+    printf("Trying to Find f(r) when r<= 0, Check Step size and starting r\n");
+    return 0;
+  }
+  double integrand = (K*Energy - ljPotential(r)*K - (l*(l+1))/(r*r));
+  return integrand;
+}
+
+
+double phaseShift(double Energy,double l,double h){
+  double psi0 = ApproxLJ(RMIN);
+  double psi0prime = ApproxLJDerivative(RMIN);
+  double psi1 = firstStep(psi0,psi0prime,h,Energy,RMIN,l);
+  //This solution array should give you u(r1)
+  double normConstant = 0.0; 
+  std::array<std::array<double,2>,STEPS2> sol1 = Numerov(psi0,psi1,STEPS,RMIN,R1,Energy,l); //no need to specify step size
+  double r2 = CalcStepSize(Energy)+sol1[STEPS][0];
+  std::array<std::array<double,2>,STEPS2> sol2 = Numerov(sol1[STEPS][1],sol1[STEPS+1][1],STEPS,R1,r2,Energy,l);
+  for(int i = 0; i<STEPS+1;i++){
+    normConstant += (pow(sol1[i][1],2) + pow(sol2[i][1],2));
+  }
+  double u1 = (sol1[STEPS+1][1]/pow(normConstant,0.5));
+  double u2 = (sol2[STEPS+1][1]/pow(normConstant,0.5));
+  double K = (R1*u1)/(r2*u2);
+  double tanPNumerator = (K*gsl_sf_bessel_jl(l,R1)-gsl_sf_bessel_jl(l,r2));
+  double tanPDenominator = (K*gsl_sf_bessel_yl(l,R1) - gsl_sf_bessel_yl(l,r2));
+  double tanP = tanPNumerator/tanPDenominator;
+  return (pow(tanP,2)/(pow(tanP,2)+1));  //this returns sin^2(del)
+  //From there, can calculate K, and then tan(phase)
+}
+
+
+double ApproxLJ(double r){
+  double retval = exp(-1*C1*pow(r,-5));
+  return retval;
+}
+
+double ApproxLJDerivative(double r){
+  double retval = ApproxLJ(r)*5*C1*pow(r,-6);
+  return retval;
+}
+
+
+double CalcStepSize(double Energy){
+  double k = pow(Energy*K,0.5);
+  double wavelength = (2.0*M_PI)/(k);
+  return 0.25*wavelength;
+}
