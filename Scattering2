@@ -18,13 +18,13 @@ const double K = 6.12; //(meV)^-1 (rho)^-2  and is equivalent to 2m/hbar^2
 const double C = 1; //HO example where h^2/m = 1 
 const double C1 = pow(EPSILON*ALPHA/25,1/2); //Analytical Constant for small r
 const int N = 1000; //How many points in the graph for LJ potential
-const int ESCAN = 500;
+const int ESCAN = 1000;
 const int LSCAN = 6; //beyond l=6, particle doesn't feel potential
 const double EMAX = 3.5; //meV   should be 3.5 meV
 const double EMIN = 0.1; //meV bounds energy scans
 const double RMIN = 0.7; //Angstroms, and is where LJ is dominated by r^(-12)
 const double R1 = 5; // Angstroms
-const int STEPS = 1000;
+const int STEPS = 5000;
 const int STEPS2 = STEPS + 2;
 
 
@@ -72,7 +72,8 @@ int main(int argc, char **argv){
     double k = pow(K*Energy,0.5);
     double h = (R1-RMIN)/STEPS;
     for(int j = 0;j< LSCAN;j++){
-      double phase  = phaseShift(Energy,j,h);
+      double phase  = pow(sin(phaseShift(Energy,j,h)),2);
+      printf("phaseShift:    %e       ,   Energy: %e \n",phase,Energy);
       CrossSection += (4.0*M_PI/(k*k))*(2*j+1)*phase;
     }
     g->SetPoint(g->GetN(),Energy,CrossSection);
@@ -80,6 +81,7 @@ int main(int argc, char **argv){
   }
 
   c1->cd(1);
+  g->SetTitle("Quantum Scattering Simulation; Energy [meV] ; Total Cross Section [#rho^{2}]");
   g->Draw("ac");
 
 
@@ -173,6 +175,10 @@ std::array<std::array<double,2>,STEPS2> Numerov(double psi0,double psi1,
 
   /** Check that the Wavefunction is being calculated correctly:  */
 
+  /**
+    TGraph *g5 = new TGraph();
+    TGraph *g6 = new TGraph();
+  */
 
   //First Step Calculation
   double r = a;
@@ -186,14 +192,32 @@ std::array<std::array<double,2>,STEPS2> Numerov(double psi0,double psi1,
     double k1 = kVector(r-h,Energy,l);
     double k2 = kVector(r-2*h,Energy,l);
     double k3 = kVector(r,Energy,l);
-    double numerator = 2*(1-(5.0/12.0)*h*h*k1)*psi1 -(1+(1.0/12.0)*h*h*k2)*psi0;
-    double denominator = 1 + (1.0/12.0)*h*h*k3;    
+    double numerator = 2*(1+(5.0/12.0)*h*h*k1)*psi1 -(1-(1.0/12.0)*h*h*k2)*psi0;
+    double denominator = 1 - (1.0/12.0)*h*h*k3;    
     numerov = (numerator/denominator);
+    /**
+    if( fabs(Energy-0.1) < 1E-5 && l == 0){
+      g5->SetPoint(g5->GetN(),r,numerov);
+      double k = pow(Energy*K,0.5);
+      double y = sin(k*r) + cos(k*r);
+      g6->SetPoint(g6->GetN(),r,y);
+    }
+    */
     values[i+2][0] = r;
     values[i+2][1] = numerov;
     psi0 = psi1;
     psi1 = numerov;
   }
+
+  /**
+  if( fabs(Energy-0.1) < 1E-5 && l == 0 && a == RMIN){
+    TCanvas *c2 = new TCanvas("c2","c2",1);
+    c2->cd(1);
+    g5->Draw("ac");
+    g6->SetLineColor(3);
+    g6->Draw("c");
+  }
+  */
 
  
   return values;
@@ -205,7 +229,7 @@ double kVector(double r,double Energy,double l){
     printf("Trying to Find f(r) when r<= 0, Check Step size and starting r\n");
     return 0;
   }
-  double integrand = (K*Energy - ljPotential(r)*K - (l*(l+1))/(r*r));
+  double integrand = (-K*Energy + ljPotential(r)*K + (l*(l+1))/(r*r));
   return integrand;
 }
 
@@ -215,20 +239,23 @@ double phaseShift(double Energy,double l,double h){
   double psi0prime = ApproxLJDerivative(RMIN);
   double psi1 = firstStep(psi0,psi0prime,h,Energy,RMIN,l);
   //This solution array should give you u(r1)
-  double normConstant = 0.0; 
+  double normConstant = 1.0;     //should be 0.0 if you want to normalize
   std::array<std::array<double,2>,STEPS2> sol1 = Numerov(psi0,psi1,STEPS,RMIN,R1,Energy,l); //no need to specify step size
   double r2 = CalcStepSize(Energy)+sol1[STEPS+1][0];
   std::array<std::array<double,2>,STEPS2> sol2 = Numerov(sol1[STEPS][1],sol1[STEPS+1][1],STEPS,R1,r2,Energy,l);
+  /**
   for(int i = 0; i<STEPS+1;i++){
     normConstant += (pow(sol1[i][1],2) + pow(sol2[i][1],2));
   }
+  */
+  double wavenumber = pow(Energy*K,0.5);
   double u1 = (sol1[STEPS+1][1]/pow(normConstant,0.5));
   double u2 = (sol2[STEPS+1][1]/pow(normConstant,0.5));
-  double K = (R1*u1)/(r2*u2);
-  double tanPNumerator = (K*gsl_sf_bessel_jl(l,R1)-gsl_sf_bessel_jl(l,r2));
-  double tanPDenominator = (K*gsl_sf_bessel_yl(l,R1) - gsl_sf_bessel_yl(l,r2));
+  double KRAT = (R1*u2)/(r2*u1);
+  double tanPNumerator = (KRAT*gsl_sf_bessel_jl(l,R1*wavenumber)-gsl_sf_bessel_jl(l,r2*wavenumber));
+  double tanPDenominator = (KRAT*gsl_sf_bessel_yl(l,R1*wavenumber) - gsl_sf_bessel_yl(l,r2*wavenumber));
   double tanP = tanPNumerator/tanPDenominator;
-  return (pow(tanP,2)/(pow(tanP,2)+1));  //this returns sin^2(del)
+  return atan(tanP);  //this returns sin^2(del)
   //From there, can calculate K, and then tan(phase)
 }
 
@@ -247,5 +274,7 @@ double ApproxLJDerivative(double r){
 double CalcStepSize(double Energy){
   double k = pow(Energy*K,0.5);
   double wavelength = (2.0*M_PI)/(k);
-  return 0.25*wavelength;
+  return 0.33*wavelength;
 }
+
+
