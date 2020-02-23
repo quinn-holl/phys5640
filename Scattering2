@@ -22,8 +22,8 @@ const int ESCAN = 500;
 const int LSCAN = 6; //beyond l=6, particle doesn't feel potential
 const double EMAX = 3.5; //meV   should be 3.5 meV
 const double EMIN = 0.1; //meV bounds energy scans
-const double RMIN = 2.7; //Angstroms, and is where LJ is dominated by r^(-12)
-const double R1 = 12; // Angstroms
+const double RMIN = 0.7; //Angstroms, and is where LJ is dominated by r^(-12)
+const double R1 = 5; // Angstroms
 const int STEPS = 1000;
 const int STEPS2 = STEPS + 2;
 
@@ -140,7 +140,7 @@ int main(int argc, char **argv){
 double ljPotential(double radius){
   /**  Uncomment out for Lennard Jones Potential
    */
-  double term1 = pow((RHO/radius),6);
+  double term1 = pow((1.0/radius),6);
   double term2 = pow(term1,2);
   double retval = EPSILON*(term2-2*term1);
   //double retval = pow(radius,2);
@@ -217,7 +217,7 @@ double phaseShift(double Energy,double l,double h){
   //This solution array should give you u(r1)
   double normConstant = 0.0; 
   std::array<std::array<double,2>,STEPS2> sol1 = Numerov(psi0,psi1,STEPS,RMIN,R1,Energy,l); //no need to specify step size
-  double r2 = CalcStepSize(Energy)+sol1[STEPS][0];
+  double r2 = CalcStepSize(Energy)+sol1[STEPS+1][0];
   std::array<std::array<double,2>,STEPS2> sol2 = Numerov(sol1[STEPS][1],sol1[STEPS+1][1],STEPS,R1,r2,Energy,l);
   for(int i = 0; i<STEPS+1;i++){
     normConstant += (pow(sol1[i][1],2) + pow(sol2[i][1],2));
