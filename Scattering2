@@ -216,7 +216,8 @@ double phaseShift(double Energy,double l,double h){
   }
   */
   double r2 = CalcStepSize(Energy) + R1;
-  double stepsneeded = STEPS + ((int)(r2/h));
+  int stepsneeded = STEPS + ((int)(r2/h));
+  r2 = h*stepsneeded + RMIN;
   double wavenumber = pow(Energy*K,0.5);
   double u1 = (sol1[STEPS+1][1]/pow(normConstant,0.5));
   double u2 = (sol1[stepsneeded+1][1]/pow(normConstant,0.5));
