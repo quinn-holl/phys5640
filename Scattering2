@@ -1,3 +1,4 @@
+
 #include <cmath>
 #include "TGraph.h"
 #include "TApplication.h"
@@ -23,7 +24,7 @@ const double EMAX = 3.5; //meV   should be 3.5 meV
 const double EMIN = 0.1; //meV bounds energy scans
 const double RMIN = 0.7; // (rho) Angstroms, and is where LJ is dominated by r^(-12)
 const double R1 = 5; // (rho) Angstroms
-const int STEPS = 5000;
+const int STEPS = 1000;
 const int STEPS2 = STEPS + 2;
 
 
@@ -33,8 +34,7 @@ using namespace std;
 double ljPotential(double radius);
 double firstStep(double psi0,double psi0prime,double h,double Energy,double r,
 		 double l);
-std::array<std::array<double,2>,STEPS2> Numerov(double psi0,double psi0prime,
-					       double steps, double a,double b,
+vector<array<double,2>> Numerov(double psi0,double psi1,double steps, double a,double b,
 					       double Energy, double l);
 double kVector(double r,double Energy,double l);
 double phaseShift(double Energy,double l,double h);
@@ -161,31 +161,22 @@ double firstStep(double psi0,double psi0prime,double h,double Energy,double r,
   return psi1;
 }
 
-std::array<std::array<double,2>,STEPS2> Numerov(double psi0,double psi1,
-					       double steps, double a,double b,
-					       double Energy,double l){
+vector<array<double,2>> Numerov(double psi0,double psi1,double steps,double a,
+			       double b, double Energy,double l){
 
-  //need to add l, in order to get magnitude of centrifugal force
-  std::array<std::array<double,2>,STEPS2> values;
+  vector<array<double,2>> values; 
   double numerov = 0.0;
   double h = (b-a)/steps;
+  double r2 = CalcStepSize(Energy) + b;
+  int stepsneeded = steps + ((int)(r2/h));
 
-
-  /** Check that the Wavefunction is being calculated correctly:  */
-
-  /**
-    TGraph *g5 = new TGraph();
-    TGraph *g6 = new TGraph();
-  */
-
-  //First Step Calculation
   double r = a;
-  
-  values[0][0] = r;
-  values[0][1] = psi0;
-  values[1][0] = r+h;
-  values[1][1] = psi1;
-  for(int i = 0; i < steps; i++){
+
+  array<double,2> init1 = {r,psi0};
+  array<double,2> init2 = {r+h,psi1};
+  values.push_back(init1);
+  values.push_back(init2);
+  for(int i = 0; i < stepsneeded; i++){
     r = (a+2*h) + i*h;
     double k1 = kVector(r-h,Energy,l);
     double k2 = kVector(r-2*h,Energy,l);
@@ -193,31 +184,11 @@ std::array<std::array<double,2>,STEPS2> Numerov(double psi0,double psi1,
     double numerator = 2*(1+(5.0/12.0)*h*h*k1)*psi1 -(1-(1.0/12.0)*h*h*k2)*psi0;
     double denominator = 1 - (1.0/12.0)*h*h*k3;    
     numerov = (numerator/denominator);
-    /**
-    if( fabs(Energy-0.1) < 1E-5 && l == 0){
-      g5->SetPoint(g5->GetN(),r,numerov);
-      double k = pow(Energy*K,0.5);
-      double y = sin(k*r) + cos(k*r);
-      g6->SetPoint(g6->GetN(),r,y);
-    }
-    */
-    values[i+2][0] = r;
-    values[i+2][1] = numerov;
+    array<double,2> val = {r,numerov};
+    values.push_back(val);
     psi0 = psi1;
     psi1 = numerov;
   }
-
-  /**
-  if( fabs(Energy-0.1) < 1E-5 && l == 0 && a == RMIN){
-    TCanvas *c2 = new TCanvas("c2","c2",1);
-    c2->cd(1);
-    g5->Draw("ac");
-    g6->SetLineColor(3);
-    g6->Draw("c");
-  }
-  */
-
- 
   return values;
 }
 
@@ -238,18 +209,17 @@ double phaseShift(double Energy,double l,double h){
   double psi1 = firstStep(psi0,psi0prime,h,Energy,RMIN,l);
   //This solution array should give you u(r1)
   double normConstant = 1.0;     //should be 0.0 if you want to normalize
-  std::array<std::array<double,2>,STEPS2> sol1 = Numerov(psi0,psi1,STEPS,RMIN,R1,Energy,l); //no need to specify step size
-  double r2 = CalcStepSize(Energy)+sol1[STEPS+1][0];
-  double Sol2StepSize = (int) (r2-R1)/h;
-  std::array<std::array<double,2>,STEPS2> sol2 = Numerov(sol1[STEPS][1],sol1[STEPS+1][1],Sol2StepSize,R1,r2,Energy,l);
+  vector<array<double,2>> sol1 = Numerov(psi0,psi1,STEPS,RMIN,R1,Energy,l); //no need to specify step size
   /**
   for(int i = 0; i<STEPS+1;i++){
     normConstant += (pow(sol1[i][1],2) + pow(sol2[i][1],2));
   }
   */
+  double r2 = CalcStepSize(Energy) + R1;
+  double stepsneeded = STEPS + ((int)(r2/h));
   double wavenumber = pow(Energy*K,0.5);
   double u1 = (sol1[STEPS+1][1]/pow(normConstant,0.5));
-  double u2 = (sol2[Sol2StepSize+1][1]/pow(normConstant,0.5));
+  double u2 = (sol1[stepsneeded+1][1]/pow(normConstant,0.5));
   double KRAT = (R1*u2)/(r2*u1);
   double tanPNumerator = (KRAT*gsl_sf_bessel_jl(l,R1*wavenumber)-gsl_sf_bessel_jl(l,r2*wavenumber));
   double tanPDenominator = (KRAT*gsl_sf_bessel_yl(l,R1*wavenumber) - gsl_sf_bessel_yl(l,r2*wavenumber));
