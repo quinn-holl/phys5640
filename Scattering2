@@ -274,7 +274,7 @@ double ApproxLJDerivative(double r){
 double CalcStepSize(double Energy){
   double k = pow(Energy*K,0.5);
   double wavelength = (2.0*M_PI)/(k);
-  return 0.33*wavelength;
+  return 0.25*wavelength;
 }
 
 
