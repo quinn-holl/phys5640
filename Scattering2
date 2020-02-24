@@ -217,13 +217,14 @@ double phaseShift(double Energy,double l,double h){
   */
   double r2 = CalcStepSize(Energy) + R1;
   int stepsneeded = STEPS + ((int)(r2/h));
-  r2 = h*stepsneeded + RMIN;
+  r2 = h*(stepsneeded+2) + RMIN;
+  r1new = h*(STEPS+2) + RMIN;
   double wavenumber = pow(Energy*K,0.5);
   double u1 = (sol1[STEPS+1][1]/pow(normConstant,0.5));
   double u2 = (sol1[stepsneeded+1][1]/pow(normConstant,0.5));
-  double KRAT = (R1*u2)/(r2*u1);
-  double tanPNumerator = (KRAT*gsl_sf_bessel_jl(l,R1*wavenumber)-gsl_sf_bessel_jl(l,r2*wavenumber));
-  double tanPDenominator = (KRAT*gsl_sf_bessel_yl(l,R1*wavenumber) - gsl_sf_bessel_yl(l,r2*wavenumber));
+  double KRAT = (r1new*u2)/(r2*u1);
+  double tanPNumerator = (KRAT*gsl_sf_bessel_jl(l,r1new*wavenumber)-gsl_sf_bessel_jl(l,r2*wavenumber));
+  double tanPDenominator = (KRAT*gsl_sf_bessel_yl(l,r1new*wavenumber) - gsl_sf_bessel_yl(l,r2*wavenumber));
   return atan2(tanPNumerator,tanPDenominator);  //this returns sin^2(del)
   //From there, can calculate K, and then tan(phase)
 }
