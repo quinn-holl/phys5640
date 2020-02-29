@@ -31,14 +31,16 @@ struct System{
   std::array<double,N> y;
   std::array<double,N> vx;
   std::array<double,N> vy;
-} states;  //initializes our data structure that we'll use for program
+}; 
 
-double pairCT(System states);  //outputs time till next pair collision
+//outputs time till next pair coll
+std::vector<double> pairCT(System states,int index1,int index2);  
 System pairC(System states);  //updates system after a pair collision
-double wallCT(System states);  //outputs time till next wall collision
+std::vector<double>  wallCT(System states,int index,int direction);  //time till next wall c
 System wallC(System states);   //updates system after a wall collision
 System update(System states,double t); //propogates system through time t
 double wallTime(double x, double vx); //one-coordinate calculation
+System Initialize();
 double pairTime(std::array<double,DIM> pairx,std::array<double,DIM> pairy,
 		std::array<double,DIM> pairvx,std::array<double,DIM> pairvy);
 
@@ -52,13 +54,19 @@ int main(int argc, char **argv){
 
   TCanvas *c1 = new TCanvas("c1","Canvas",dw,dh);
   double t = 0; //initialize time variable
-  //Need to initialize N hard disks
-  states = {};
+  System states = Initialize(); //Need to initialize N hard disks
+ 
 
   for(int i = 0;i++;i<TIME){  //this is in "collision time"
-    double tpair = pairCT(states);
-    double twall = wallCT(states);
-    double tnext = std::min(tpair,twall);
+    std::vector<double> pairVector = pairCT(states);  
+    double tpair = pairVector[0];
+    int tpairIndex1 = std::round(pairVector[1]); //need to know which two disks
+    int tpairIndex2 = std::round(pairVector[2]); // to update
+    std::vector<double> wallVector = wallCT(states);
+    double twall = wallVector[0];  
+    int twallIndex = std::round(wallVector[1]);  //same goes here, need to
+    int direction = std::round(wallVector[2]);
+    double tnext = std::min(tpair,twall);  //know which disk to update
     if(tnext == INF){
       printf("Something's Gone Wrong, Using INF for time step\n");
     }
@@ -68,9 +76,9 @@ int main(int argc, char **argv){
       //probably want to sample here for histogram points
     }
     if(twall > tpair){ //updates states to reflect the collision at tnext
-      states = pairCT(states);
+      states = pairCT(states,tpairIndex1,tpairIndex2);
     } else {
-      states = wallCT(states);
+      states = wallCT(states,twallIndex,direction);
     }
     t = tnext;
   }
@@ -84,8 +92,10 @@ int main(int argc, char **argv){
 }
 
 
-double pairCT(System states){
+std::vector<double> pairCT(System states){
   double tmin = INF; //be careful that you're setting this to an actual time
+  double tIndex1 = 0.0;
+  double tIndex2 = 0.0;
   for(int i = 1;i<N;i++){  //We don't want to double count or call the function
                            //on itself, i.e. when will it collide with itself
     for(int j = 0;j<i;j++){
@@ -94,10 +104,43 @@ double pairCT(System states){
       std::array<double,DIM> pairvx = {states[i].vx,states[j].vx};
       std::array<double,DIM> pairvy = {states[i].vy,states[j].vy};
       double ti = pairTime(pairx,pairy,pairvx,pairvy);
-      tmin = std::min(ti,tmin);
+      if(ti < tmin){
+	tmin = ti;
+	tIndex1 = j;
+	tIndex2 = i;
+      }
     }
   }
-  return tmin;
+  std::vector<double> retval;
+  retval.push_back(tmin);
+  retval.push_back(tIndex1);
+  retval.push_back(tIndex2);
+  return retval;
+}
+
+System pairC(System states,int index1,int index2){
+  double delx = states[index2].x-states[index1].x;
+  double dely = states[index2].y-states[index1].y;
+  double abs_x = pow(delx*delx + dely*dely);   
+  double ePerpx = delx/abs_x;
+  double ePerpy = dely/abs_x;
+  double delvx = states[index2].vx - states[index1].vx;
+  double delvy = states[index2].vy - states[index2].vx;
+  double scal = delvx*ePerpx + delvy*ePerpy;
+  states[index1].x += ePerpx*scal;
+  states[index1].y += ePerpy*scal;
+  states[index2].x -= ePerpx*scal;
+  states[index2].y -= ePerpy*scal;
+  return states;
+}
+
+System wallC(System states,int index,int direction){
+  if(direction == 0){
+    states[index].vx = -1*states[index].vx;
+  } else {
+    states[index].vy = -1*states[index].vy;
+  }
+  return states;
 }
 
 double pairTime(std::array<double,DIM> pairx,std::array<double,DIM> pairy,
@@ -120,15 +163,29 @@ double pairTime(std::array<double,DIM> pairx,std::array<double,DIM> pairy,
 }
 
 
-double wallCT(System states){
+std::vector<double> wallCT(System states){
   double tmin = INF; //be careful that you're setting this to an actual time
+  double tIndex = 0.0;
+  double direction = 0.0;
   for(int i = 0;i<N;i++){
     double tix = wallTime(states[i].x,states[i].vx);
     double tiy = wallTime(states[i].y,states[i].vy);
     double tiMin = std::min(tix,tiy); //smallest collision time for individual
-    tmin = std::min(tiMin,tmin);
+    if(tiMin < tmin){
+      tmin = tiMin;
+      tIndex = i;
+      if(tix < tiy){
+	direction = 0.0;
+      } else {
+	direction = 1.1;
+      }
+    }
   }
-  return tmin;
+  std::vector<double> retval;
+  retval.push_back(tmin);
+  retval.push_back(tIndex);
+  retval.push_back(direction);
+  return retval;
 }
 
 
@@ -143,6 +200,7 @@ double wallTime(double x, double vx){
   }
   return tix;
 }
+
 
 System update(System states,double t){
   for(int i = 0;i<N;i++){
