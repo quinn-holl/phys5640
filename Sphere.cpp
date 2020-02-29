@@ -91,6 +91,20 @@ int main(int argc, char **argv){
   theApp.Run();
 }
 
+System Initialize(){
+  std::array<double,N> x = {0.15,0.6,0.43,0.87};
+  std::array<double,N> y = {0.65,0.14,0.74,0.0.85};
+  std::array<double,N> vx = {4.2,-1.5,3.2,10};
+  std::array<double,N> vy = {-5.3,2.6,0.9,10.0};
+
+  /**Idea for initializing in future, fill up array by using rand number 
+     in appropriate range (0+sigma,1-sigma) for both x and y, and then checking
+     that that's a valid placement. Then do random for vx and vy where we do
+     random number between say (-15,15) in both directions
+  */
+}
+
+
 
 std::vector<double> pairCT(System states){
   double tmin = INF; //be careful that you're setting this to an actual time
