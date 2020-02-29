@@ -143,3 +143,10 @@ double wallTime(double x, double vx){
   }
   return tix;
 }
+
+System update(System states,double t){
+  for(int i = 0;i<N;i++){
+    states[i].x = states[i].vx*t;
+    states[i].y = states[i].vy*t;
+  }
+}
