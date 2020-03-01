@@ -11,17 +11,18 @@
 #include "TMultiGraph.h"
 #include "TRandom3.h"
 #include "TH2F.h"
+#include "TH1F.h"
 #include "TProfile.h"
 
-const int N = 10; //Number of spheres in simulation
+const int N = 4; //Number of spheres in simulation
 const int TIME = 1000; //How long system will run in # of collisions
 const int SUBTIME = 5; //number of updates between collisions
-const double sigma = 0.075; //Radius of hard spheres
+const double sigma = 0.15; //Radius of hard spheres
 const double INF = 1000000; //Definition of Infinity here to compare times
 const int DIM = 2; //we're only doing 2d Here
 const double SIZE = 1; //Box is of length size
 const double VABS = .1; //This is just part of the initial condition
-const int THERMAL = 100; //after how many events do we start sampling
+const int THERMAL = 50; //after how many events do we start sampling
 
 //Box Dimensions: [0,1],[0,1] for both x and y
 
@@ -49,7 +50,7 @@ double wallTime(double x, double vx); //one-coordinate calculation
 System Initialize();
 double pairTime(std::array<double,DIM> pairx,std::array<double,DIM> pairy,
 		std::array<double,DIM> pairvx,std::array<double,DIM> pairvy);
-std::array<double,DIM> generatePoint(std::array<double,N> x,std::array<double,N> y);
+std::array<double,DIM> generatePoint(std::array<double,N> x,std::array<double,N> y,TRandom *r3);
 
 
 
@@ -64,8 +65,13 @@ int main(int argc, char **argv){
   double t = 0; //initialize time variable
   System states = Initialize(); //Need to initialize N hard disks
   TH2F *hist = new TH2F("hist","Event Disk Hist",100,0.0,1.0,100,0.0,1.0);
-  int index1 = -1; //Index for excluding pair collisions
+  TH1F *histy = new TH1F("histy","Event Disk Hist",100,0.0,1.0);
+  TH1F *histvx = new TH1F("histvx","Velocity in X-directions",100,-.2,.2);
+  TH1F *histabs = new TH1F("histabs","Absolute Velocity",100,0.0,0.2);
+  int index1 = -1; //Index for excluding pair collisions that just happened
   int index2 = -1;
+  TGraph *g = new TGraph();
+  g->GetYaxis()->SetRange(0,SIZE);
 
   for(int i = 0;i<TIME;i++){  //this is in "collision time"
     std::vector<double> pairVector = pairCT(states,index1,index2);  
@@ -84,11 +90,18 @@ int main(int argc, char **argv){
     for(int m = 0;m<SUBTIME; m++){
       double deltaT = (1.0/SUBTIME)*(tnext);
       states = update(states,deltaT);
+      g->SetPoint(g->GetN(),states.x[0],states.y[0]);
       //probably want to sample here for histogram points
       if(i>THERMAL){
+	double KE = 0.0;
 	for(int j = 0;j<N;j++){
-	  hist->Fill(states.vx[j],states.vy[j]);
+	  KE+= pow( pow(states.vx[j],2)+pow(states.vy[j],2),0.5);
+	  histy->Fill(states.y[j]);
+	  hist->Fill(states.x[j],states.y[j],fabs(1.0/states.vy[j]));
+	  histvx->Fill(states.vx[j]);
+	  histabs->Fill(pow(pow(states.vx[j],2) +pow(states.vy[j],2),0.5));
 	}
+	printf("KE : %e at timet\n",KE);
       }
     }
     if(twall > tpair){ //updates states to reflect the collision at tnext
@@ -108,9 +121,20 @@ printf("vx:%e vy:%e x:%e  y:%e\n",states.vx[tpairIndex2],states.vy[tpairIndex2],
   }
 
   c1->cd(1);
+  /**
   TProfile *prof = hist->ProfileX();
   prof->SetTitle("Event Driven Disk Simulation; x-coordinate;proj. density");
   prof->Draw();
+  */
+  histy->Draw();
+  //g->Draw("ac");
+
+  TCanvas *c2 = new TCanvas("c2","c2",1);
+  c2->Divide(2,1);
+  c2->cd(1);
+  histvx->Draw();
+  c2->cd(2);
+  histabs->Draw();
 
 
 
@@ -126,11 +150,17 @@ System Initialize(){
   std::array<double,N> vy;
   TRandom3 *r3 = new TRandom3();
   for(int i = 0;i<N;i++){
-    std::array<double,DIM> point = generatePoint(x,y);
+    std::array<double,DIM> point = generatePoint(x,y,r3);
     x[i] = point[0];
     y[i] = point[1];
     vx[i] = (r3->Rndm()*2*VABS)-VABS;
-    vy[i] = pow(VABS*VABS-vx[i]*vx[i],0.5);  //This is part of IC that all vabs are equal
+    double sign = r3->Rndm();
+    if(sign > 0.5){
+      sign = -1;
+    } else {
+      sign = 1;
+    }
+    vy[i] = sign*pow(VABS*VABS-vx[i]*vx[i],0.5);  //This is part of IC that all vabs are equal
   }
   /** Put in initial conditions
       1. System is at rest on average
@@ -145,8 +175,8 @@ System Initialize(){
   for(int i = 0;i<N;i++){
     vx[i] = vx[i] - vxsum/N;
     vy[i] = vy[i] - vysum/N;
-    printf("vy: %e,  vx: %e\n",vy[i],vx[i]);
   }
+
   System states;
   states.x = x;
   states.y = y;
@@ -155,11 +185,10 @@ System Initialize(){
   return states;
 }
 
-std::array<double,DIM> generatePoint(std::array<double,N> x,std::array<double,N> y){
+std::array<double,DIM> generatePoint(std::array<double,N> x,std::array<double,N> y,TRandom *r3){
   int condition = 0;
   double xtemp = 0.0;  //If debugging, check that were not just getting 
   double ytemp = 0.0; // disks at 0,0
-  TRandom3 *r3 = new TRandom3(); //If debugging, check this (two RNG's might be bad)
   while(condition == 0){
     int legalflag = 0;
     xtemp = r3->Rndm()*(SIZE-2*sigma) + sigma;
@@ -204,8 +233,8 @@ std::vector<double> pairCT(System states,int index1,int index2){
 	    continue;
 	  } else {
 	  tmin = ti;
-	  tIndex1 = j;
-	  tIndex2 = i;
+	  tIndex1 = i;
+	  tIndex2 = j;
 	  }
 	}
       }
