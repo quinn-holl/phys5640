@@ -9,13 +9,19 @@
 #include <array>
 #include "TLegend.h"
 #include "TMultiGraph.h"
+#include "TRandom3.h"
+#include "TH2F.h"
+#include "TProfile.h"
 
-const int N = 4; //Number of spheres in simulation
-const int TIME = 5000; //How long system will run in # of collisions
+const int N = 10; //Number of spheres in simulation
+const int TIME = 10; //How long system will run in # of collisions
 const int SUBTIME = 5; //number of updates between collisions
-const double sigma = 0.1; //Radius of hard spheres
+const double sigma = 0.075; //Radius of hard spheres
 const double INF = 1000000; //Definition of Infinity here to compare times
 const int DIM = 2; //we're only doing 2d Here
+const double SIZE = 1; //Box is of length size
+const double VABS = .1; //This is just part of the initial condition
+const int THERMAL = 1; //after how many events do we start sampling
 
 //Box Dimensions: [0,1],[0,1] for both x and y
 
@@ -34,15 +40,17 @@ struct System{
 }; 
 
 //outputs time till next pair coll
-std::vector<double> pairCT(System states,int index1,int index2);  
-System pairC(System states);  //updates system after a pair collision
-std::vector<double>  wallCT(System states,int index,int direction);  //time till next wall c
-System wallC(System states);   //updates system after a wall collision
+std::vector<double> pairCT(System states);  
+System pairC(System states,int index1,int index2);  //updates system after a pair
+std::vector<double>  wallCT(System states);  //time till next wall c
+System wallC(System states,int index,int direction);   //updates system after a wall
 System update(System states,double t); //propogates system through time t
 double wallTime(double x, double vx); //one-coordinate calculation
 System Initialize();
 double pairTime(std::array<double,DIM> pairx,std::array<double,DIM> pairy,
 		std::array<double,DIM> pairvx,std::array<double,DIM> pairvy);
+std::array<double,DIM> generatePoint(std::array<double,N> x,std::array<double,N> y);
+
 
 
 
@@ -55,9 +63,10 @@ int main(int argc, char **argv){
   TCanvas *c1 = new TCanvas("c1","Canvas",dw,dh);
   double t = 0; //initialize time variable
   System states = Initialize(); //Need to initialize N hard disks
+  TH2F *hist = new TH2F("hist","Event Disk Hist",100,0.0,1.0,100,0.0,1.0);
  
 
-  for(int i = 0;i++;i<TIME){  //this is in "collision time"
+  for(int i = 0;i<TIME;i++){  //this is in "collision time"
     std::vector<double> pairVector = pairCT(states);  
     double tpair = pairVector[0];
     int tpairIndex1 = std::round(pairVector[1]); //need to know which two disks
@@ -71,39 +80,102 @@ int main(int argc, char **argv){
       printf("Something's Gone Wrong, Using INF for time step\n");
     }
     for(int m = 1;m<= SUBTIME; m++){
-      double deltaT = t +((double)i/m)*(tnext-t);
+      double deltaT = (1.0/SUBTIME)*(tnext-t);
       states = update(states,deltaT);
+      for(int l = 0;l<N;l++){
+	printf("collision: %d, particle: %d, x: %e  y:%e  time: %e\n",i,l,states.x[l],states.y[l],deltaT);
+      }
       //probably want to sample here for histogram points
+      if(i>THERMAL){
+	for(int j = 0;j<N;j++){
+	  hist->Fill(states.x[j],states.y[j]);
+	}
+      }
     }
     if(twall > tpair){ //updates states to reflect the collision at tnext
-      states = pairCT(states,tpairIndex1,tpairIndex2);
+      states = pairC(states,tpairIndex1,tpairIndex2);
     } else {
-      states = wallCT(states,twallIndex,direction);
+      printf("vx:%e  vy:%e  x:%e   y:%e\n",states.vx[twallIndex],states.vy[twallIndex],states.x[twallIndex],states.y[twallIndex]);
+      states = wallC(states,twallIndex,direction);
+      printf("vx:%e  vy:%e  x:%e   y:%e\n",states.vx[twallIndex],states.vy[twallIndex],states.x[twallIndex],states.y[twallIndex]);
     }
     t = tnext;
   }
 
+  c1->cd(1);
+  TProfile *prof = hist->ProfileX();
+  prof->SetTitle("Event Driven Disk Simulation; x-coordinate;proj. density");
+  prof->Draw();
 
 
 
-  cout << "Press ^c to exit" << endl;
+  std::cout << "Press ^c to exit" << std::endl;
   theApp.SetIdleTimer(120,".q");
   theApp.Run();
 }
 
 System Initialize(){
-  std::array<double,N> x = {0.15,0.6,0.43,0.87};
-  std::array<double,N> y = {0.65,0.14,0.74,0.0.85};
-  std::array<double,N> vx = {4.2,-1.5,3.2,10};
-  std::array<double,N> vy = {-5.3,2.6,0.9,10.0};
-
-  /**Idea for initializing in future, fill up array by using rand number 
-     in appropriate range (0+sigma,1-sigma) for both x and y, and then checking
-     that that's a valid placement. Then do random for vx and vy where we do
-     random number between say (-15,15) in both directions
+  std::array<double,N> x;
+  std::array<double,N> y;
+  std::array<double,N> vx;
+  std::array<double,N> vy;
+  TRandom3 *r3 = new TRandom3();
+  for(int i = 0;i<N;i++){
+    std::array<double,DIM> point = generatePoint(x,y);
+    x[i] = point[0];
+    y[i] = point[1];
+    vx[i] = (r3->Rndm()*2*VABS)-VABS;
+    vy[i] = pow(100-vx[i]*vx[i],0.5);  //This is part of IC that all vabs are equal
+  }
+  /** Put in initial conditions
+      1. System is at rest on average
+      2. All particles have the same absolute velocities at start
   */
+  double vxsum = 0.0;
+  double vysum = 0.0;
+  for(int i =0;i<N;i++){
+    vxsum += vx[i];
+    vysum += vy[i];
+  }
+  for(int i = 0;i<N;i++){
+    vx[i] = vx[i] - vxsum/N;
+    vy[i] = vy[i] - vysum/N;
+  }
+  System states;
+  states.x = x;
+  states.y = y;
+  states.vx = vx;
+  states.vy = vy;
+  return states;
 }
 
+std::array<double,DIM> generatePoint(std::array<double,N> x,std::array<double,N> y){
+  int condition = 0;
+  double xtemp = 0.0;  //If debugging, check that were not just getting 
+  double ytemp = 0.0; // disks at 0,0
+  TRandom3 *r3 = new TRandom3(); //If debugging, check this (two RNG's might be bad)
+  while(condition == 0){
+    int legalflag = 0;
+    xtemp = r3->Rndm()*(SIZE-2*sigma) + sigma;
+    ytemp = r3->Rndm()*(SIZE-2*sigma) + sigma;
+    for(int i = 0;i<N;i++){ //could make speed improvements here
+      if( (fabs(x[i] - 0.0) < 1E-5)&(fabs(y[i]-0.0) <1E-5)){
+	continue; //hasn't been initialized yet
+      }
+      double distance = pow(pow(xtemp-x[i],2) + pow(ytemp-y[i],2),0.5);
+      if(distance < 2*sigma){
+	legalflag = 1; //Violates space
+      }
+    }
+    if(legalflag == 1){
+      condition = 0;
+    } else {
+      condition = 1;
+    }
+  }
+  std::array<double,DIM> retval = {xtemp,ytemp};
+  return retval;
+}
 
 
 std::vector<double> pairCT(System states){
@@ -113,10 +185,10 @@ std::vector<double> pairCT(System states){
   for(int i = 1;i<N;i++){  //We don't want to double count or call the function
                            //on itself, i.e. when will it collide with itself
     for(int j = 0;j<i;j++){
-      std::array<double,DIM> pairx = {states[i].x,states[j].x};
-      std::array<double,DIM> pairy = {states[i].y,states[j].y};
-      std::array<double,DIM> pairvx = {states[i].vx,states[j].vx};
-      std::array<double,DIM> pairvy = {states[i].vy,states[j].vy};
+      std::array<double,DIM> pairx = {states.x[i],states.x[j]};
+      std::array<double,DIM> pairy = {states.y[i],states.y[j]};
+      std::array<double,DIM> pairvx = {states.vx[i],states.vx[j]};
+      std::array<double,DIM> pairvy = {states.vy[i],states.vy[j]};
       double ti = pairTime(pairx,pairy,pairvx,pairvy);
       if(ti < tmin){
 	tmin = ti;
@@ -133,26 +205,26 @@ std::vector<double> pairCT(System states){
 }
 
 System pairC(System states,int index1,int index2){
-  double delx = states[index2].x-states[index1].x;
-  double dely = states[index2].y-states[index1].y;
-  double abs_x = pow(delx*delx + dely*dely);   
+  double delx = states.x[index2]-states.x[index1];
+  double dely = states.y[index2]-states.y[index1];
+  double abs_x = pow(delx*delx + dely*dely,2);   
   double ePerpx = delx/abs_x;
   double ePerpy = dely/abs_x;
-  double delvx = states[index2].vx - states[index1].vx;
-  double delvy = states[index2].vy - states[index2].vx;
+  double delvx = states.vx[index2] - states.vx[index1];
+  double delvy = states.vy[index2] - states.vx[index1];
   double scal = delvx*ePerpx + delvy*ePerpy;
-  states[index1].x += ePerpx*scal;
-  states[index1].y += ePerpy*scal;
-  states[index2].x -= ePerpx*scal;
-  states[index2].y -= ePerpy*scal;
+  states.x[index1] += ePerpx*scal;
+  states.y[index1] += ePerpy*scal;
+  states.x[index2] -= ePerpx*scal;
+  states.y[index2] -= ePerpy*scal;
   return states;
 }
 
 System wallC(System states,int index,int direction){
   if(direction == 0){
-    states[index].vx = -1*states[index].vx;
+    states.vx[index] = -1*states.vx[index];
   } else {
-    states[index].vy = -1*states[index].vy;
+    states.vy[index] = -1*states.vy[index];
   }
   return states;
 }
@@ -182,8 +254,8 @@ std::vector<double> wallCT(System states){
   double tIndex = 0.0;
   double direction = 0.0;
   for(int i = 0;i<N;i++){
-    double tix = wallTime(states[i].x,states[i].vx);
-    double tiy = wallTime(states[i].y,states[i].vy);
+    double tix = wallTime(states.x[i],states.vx[i]);
+    double tiy = wallTime(states.y[i],states.vy[i]);
     double tiMin = std::min(tix,tiy); //smallest collision time for individual
     if(tiMin < tmin){
       tmin = tiMin;
@@ -191,7 +263,7 @@ std::vector<double> wallCT(System states){
       if(tix < tiy){
 	direction = 0.0;
       } else {
-	direction = 1.1;
+	direction = 1.0;
       }
     }
   }
@@ -206,7 +278,7 @@ std::vector<double> wallCT(System states){
 double wallTime(double x, double vx){
   double tix = 0.0;
   if(vx > 0.0){
-    tix = (1.0-sigma-x)/vx;
+    tix = (SIZE-sigma-x)/vx;
   } else if(vx <0.0){
     tix = (x-sigma)/fabs(vx);
   } else {
@@ -218,7 +290,8 @@ double wallTime(double x, double vx){
 
 System update(System states,double t){
   for(int i = 0;i<N;i++){
-    states[i].x = states[i].vx*t;
-    states[i].y = states[i].vy*t;
+    states.x[i] = states.vx[i]*t + states.x[i];
+    states.y[i] = states.vy[i]*t + states.y[i];
   }
+  return states;
 }
