@@ -14,14 +14,14 @@
 #include "TProfile.h"
 
 const int N = 10; //Number of spheres in simulation
-const int TIME = 10; //How long system will run in # of collisions
+const int TIME = 1000; //How long system will run in # of collisions
 const int SUBTIME = 5; //number of updates between collisions
 const double sigma = 0.075; //Radius of hard spheres
 const double INF = 1000000; //Definition of Infinity here to compare times
 const int DIM = 2; //we're only doing 2d Here
 const double SIZE = 1; //Box is of length size
 const double VABS = .1; //This is just part of the initial condition
-const int THERMAL = 1; //after how many events do we start sampling
+const int THERMAL = 100; //after how many events do we start sampling
 
 //Box Dimensions: [0,1],[0,1] for both x and y
 
@@ -40,7 +40,7 @@ struct System{
 }; 
 
 //outputs time till next pair coll
-std::vector<double> pairCT(System states);  
+std::vector<double> pairCT(System states,int index1,int index2);  
 System pairC(System states,int index1,int index2);  //updates system after a pair
 std::vector<double>  wallCT(System states);  //time till next wall c
 System wallC(System states,int index,int direction);   //updates system after a wall
@@ -64,10 +64,11 @@ int main(int argc, char **argv){
   double t = 0; //initialize time variable
   System states = Initialize(); //Need to initialize N hard disks
   TH2F *hist = new TH2F("hist","Event Disk Hist",100,0.0,1.0,100,0.0,1.0);
- 
+  int index1 = -1; //Index for excluding pair collisions
+  int index2 = -1;
 
   for(int i = 0;i<TIME;i++){  //this is in "collision time"
-    std::vector<double> pairVector = pairCT(states);  
+    std::vector<double> pairVector = pairCT(states,index1,index2);  
     double tpair = pairVector[0];
     int tpairIndex1 = std::round(pairVector[1]); //need to know which two disks
     int tpairIndex2 = std::round(pairVector[2]); // to update
@@ -76,30 +77,34 @@ int main(int argc, char **argv){
     int twallIndex = std::round(wallVector[1]);  //same goes here, need to
     int direction = std::round(wallVector[2]);
     double tnext = std::min(tpair,twall);  //know which disk to update
+    printf("TPair: %e   TWall:   %e    Tnext:  %e\n",tpair,twall,tnext);
     if(tnext == INF){
       printf("Something's Gone Wrong, Using INF for time step\n");
     }
-    for(int m = 1;m<= SUBTIME; m++){
+    for(int m = 0;m<SUBTIME; m++){
       double deltaT = (1.0/SUBTIME)*(tnext);
       states = update(states,deltaT);
-      for(int l = 0;l<N;l++){
-	printf("collision: %d, particle: %d, x: %e  y:%e  time: %e\n",i,l,states.x[l],states.y[l],deltaT);
-      }
       //probably want to sample here for histogram points
       if(i>THERMAL){
 	for(int j = 0;j<N;j++){
-	  hist->Fill(states.x[j],states.y[j]);
+	  hist->Fill(states.vx[j],states.vy[j]);
 	}
       }
     }
     if(twall > tpair){ //updates states to reflect the collision at tnext
+      printf("vx:%e vy:%e x:%e  y:%e\n",states.vx[tpairIndex1],states.vy[tpairIndex1],states.x[tpairIndex1],states.y[tpairIndex1]);
+printf("vx:%e vy:%e x:%e  y:%e\n",states.vx[tpairIndex2],states.vy[tpairIndex2],states.x[tpairIndex2],states.y[tpairIndex2]);
       states = pairC(states,tpairIndex1,tpairIndex2);
+      index1 = tpairIndex1;
+      index2 = tpairIndex2;
+      printf("vx:%e vy:%e x:%e  y:%e\n",states.vx[tpairIndex1],states.vy[tpairIndex1],states.x[tpairIndex1],states.y[tpairIndex1]);
+printf("vx:%e vy:%e x:%e  y:%e\n",states.vx[tpairIndex2],states.vy[tpairIndex2],states.x[tpairIndex2],states.y[tpairIndex2]);
     } else {
-      printf("vx:%e  vy:%e  x:%e   y:%e\n",states.vx[twallIndex],states.vy[twallIndex],states.x[twallIndex],states.y[twallIndex]);
       states = wallC(states,twallIndex,direction);
-      printf("vx:%e  vy:%e  x:%e   y:%e\n",states.vx[twallIndex],states.vy[twallIndex],states.x[twallIndex],states.y[twallIndex]);
+      index1 = -1;
+      index2 = -1;
     }
-    t = tnext;
+    t += tnext;
   }
 
   c1->cd(1);
@@ -125,7 +130,7 @@ System Initialize(){
     x[i] = point[0];
     y[i] = point[1];
     vx[i] = (r3->Rndm()*2*VABS)-VABS;
-    vy[i] = pow(100-vx[i]*vx[i],0.5);  //This is part of IC that all vabs are equal
+    vy[i] = pow(VABS*VABS-vx[i]*vx[i],0.5);  //This is part of IC that all vabs are equal
   }
   /** Put in initial conditions
       1. System is at rest on average
@@ -140,6 +145,7 @@ System Initialize(){
   for(int i = 0;i<N;i++){
     vx[i] = vx[i] - vxsum/N;
     vy[i] = vy[i] - vysum/N;
+    printf("vy: %e,  vx: %e\n",vy[i],vx[i]);
   }
   System states;
   states.x = x;
@@ -178,7 +184,7 @@ std::array<double,DIM> generatePoint(std::array<double,N> x,std::array<double,N>
 }
 
 
-std::vector<double> pairCT(System states){
+std::vector<double> pairCT(System states,int index1,int index2){
   double tmin = INF; //be careful that you're setting this to an actual time
   double tIndex1 = 0.0;
   double tIndex2 = 0.0;
@@ -191,9 +197,17 @@ std::vector<double> pairCT(System states){
       std::array<double,DIM> pairvy = {states.vy[i],states.vy[j]};
       double ti = pairTime(pairx,pairy,pairvx,pairvy);
       if(ti < tmin){
-	tmin = ti;
-	tIndex1 = j;
-	tIndex2 = i;
+	if((i==index1 && j == index2 )|| (i == index2 && j==index1)){
+	  continue;
+	} else {
+	  if(ti<0){
+	    continue;
+	  } else {
+	  tmin = ti;
+	  tIndex1 = j;
+	  tIndex2 = i;
+	  }
+	}
       }
     }
   }
@@ -205,18 +219,18 @@ std::vector<double> pairCT(System states){
 }
 
 System pairC(System states,int index1,int index2){
-  double delx = states.x[index2]-states.x[index1];
-  double dely = states.y[index2]-states.y[index1];
+  double delx = states.x[index1]-states.x[index2];
+  double dely = states.y[index1]-states.y[index2];
   double abs_x = pow(delx*delx + dely*dely,0.5);   
   double ePerpx = delx/abs_x;
   double ePerpy = dely/abs_x;
-  double delvx = states.vx[index2] - states.vx[index1];
-  double delvy = states.vy[index2] - states.vx[index1];
+  double delvx = states.vx[index1] - states.vx[index2];
+  double delvy = states.vy[index1] - states.vx[index2];
   double scal = delvx*ePerpx + delvy*ePerpy;
-  states.vx[index1] += ePerpx*scal;
-  states.vy[index1] += ePerpy*scal;
-  states.vx[index2] -= ePerpx*scal;
-  states.vy[index2] -= ePerpy*scal;
+  states.vx[index1] -= ePerpx*scal;
+  states.vy[index1] -= ePerpy*scal;
+  states.vx[index2] += ePerpx*scal;
+  states.vy[index2] += ePerpy*scal;
   return states;
 }
 
