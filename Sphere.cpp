@@ -207,7 +207,7 @@ std::vector<double> pairCT(System states){
 System pairC(System states,int index1,int index2){
   double delx = states.x[index2]-states.x[index1];
   double dely = states.y[index2]-states.y[index1];
-  double abs_x = pow(delx*delx + dely*dely,2);   
+  double abs_x = pow(delx*delx + dely*dely,0.5);   
   double ePerpx = delx/abs_x;
   double ePerpy = dely/abs_x;
   double delvx = states.vx[index2] - states.vx[index1];
