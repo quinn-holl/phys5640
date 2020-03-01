@@ -80,7 +80,7 @@ int main(int argc, char **argv){
       printf("Something's Gone Wrong, Using INF for time step\n");
     }
     for(int m = 1;m<= SUBTIME; m++){
-      double deltaT = (1.0/SUBTIME)*(tnext-t);
+      double deltaT = (1.0/SUBTIME)*(tnext);
       states = update(states,deltaT);
       for(int l = 0;l<N;l++){
 	printf("collision: %d, particle: %d, x: %e  y:%e  time: %e\n",i,l,states.x[l],states.y[l],deltaT);
@@ -213,10 +213,10 @@ System pairC(System states,int index1,int index2){
   double delvx = states.vx[index2] - states.vx[index1];
   double delvy = states.vy[index2] - states.vx[index1];
   double scal = delvx*ePerpx + delvy*ePerpy;
-  states.x[index1] += ePerpx*scal;
-  states.y[index1] += ePerpy*scal;
-  states.x[index2] -= ePerpx*scal;
-  states.y[index2] -= ePerpy*scal;
+  states.vx[index1] += ePerpx*scal;
+  states.vy[index1] += ePerpy*scal;
+  states.vx[index2] -= ePerpx*scal;
+  states.vy[index2] -= ePerpy*scal;
   return states;
 }
 
