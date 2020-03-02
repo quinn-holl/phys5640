@@ -104,8 +104,13 @@ std::array<double,DIM> generatePoint(std::array<double,N> x,std::array<double,N>
   double xtemp = 0.0;  //If debugging, check that were not just getting 
   double ytemp = 0.0; // disks at 0,0
  
-  xtemp = r3->Rndm()*(SIZE-2*sigma) + sigma;
-  ytemp = r3->Rndm()*(SIZE-2*sigma) + sigma;
+  if(BCflag == 0){
+    xtemp = r3->Rndm()*(SIZE-2*sigma) + sigma;
+    ytemp = r3->Rndm()*(SIZE-2*sigma) + sigma;
+  } else {
+    xtemp = r3->Rndm()*SIZE;
+    ytemp = r3->Rndm()*SIZE;
+  }
   if(index == -1){
     std::array<double,DIM> p1 = {xtemp,ytemp};
     return p1;
@@ -135,15 +140,16 @@ std::array<double,DIM> generatePoint(std::array<double,N> x,std::array<double,N>
 }
 
 std::array<double,DIM> box(std::array<double,DIM> x){
-  x[0] = std::fmod(x[0],SIZE);
-  x[1] = std::fmod(x[1],SIZE);
-  if(x[0] < 0){
-    x[0] *= -1.0;
+  std::array<double,DIM> retval;
+  retval[0] = std::fmod(x[0],SIZE);
+  retval[1] = std::fmod(x[1],SIZE);
+  if(retval[0] < 0){
+    retval[0] = retval[0] + SIZE;
   } 
-  if(x[1] < 0){
-    x[1] *= -1.0;
+  if(retval[1] < 1){
+    retval[1] = retval[1] + SIZE;
   }
-  return x;
+  return retval;
 }
 
 std::array<double,DIM> diffV(std::array<double,DIM> x,std::array<double,DIM> y){
