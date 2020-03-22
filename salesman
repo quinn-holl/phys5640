@@ -1,0 +1,203 @@
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <unistd.h>
+#include <time.h>
+#include <string.h>
+// simple structure to store city coordinates
+// could also use std::pair<double> 
+// or define a class
+
+typedef struct {
+  double lon, lat;
+} COORD;
+
+const double R = 6371000;
+const double convert = 0.0174532925;
+
+/*
+** THE CITIES LIST
+** NEED TO CHANGE NMAX DEPENDING ON TRIAL RUN
+*/
+const int NMAX=150;
+COORD cities[NMAX];
+int success = 1;
+/* Variable used to control for timezone penalites */
+int energyflag = 0;
+const int TIMEZONES = 3;
+double zone[TIMEZONES] = {-85.5,-102,-114};
+
+/*
+** Method for making random changes in cities list
+*/
+
+double energy(COORD arr[NMAX],int energyflag);
+
+COORD* new_order(int *start,int *length){
+  int size = NMAX;
+  int rand_start = (int)(drand48()*(size-1));
+  start = &rand_start;
+  int rand_length = (int)((drand48()*(size-rand_start-2))+2);
+  length = &rand_length;
+  COORD *temp = (COORD*) calloc(rand_length,sizeof(COORD));
+  COORD *temp2 = (COORD*) calloc(NMAX,sizeof(COORD));
+  for(int i = 0;i<rand_length;i++){
+    temp[i].lon = cities[rand_start+rand_length -1-i].lon;
+    temp[i].lat = cities[rand_start+rand_length-1 -i].lat;
+  }
+  int count = 0;
+  for(int i = 0;i<size;i++){
+    if((i>=rand_start)&&(i<=(rand_start+rand_length-1 ))){
+      temp2[i].lon = temp[count].lon;
+      temp2[i].lat = temp[count].lat;
+      count++;
+    } else{
+      temp2[i].lon=cities[i].lon;
+      temp2[i].lat = cities[i].lat;
+    }
+  }
+  free(temp);
+  return temp2;
+}
+
+void update_order(double beta){
+  int x =0;
+  int *start=&x,*length=&x;
+  COORD *temp = new_order(start,length);
+  double DeltaE = 0.0;
+  DeltaE = energy(temp,energyflag)-energy(cities,energyflag);
+  double rand = drand48();
+  //printf("%lf\n",DeltaE);
+  if(DeltaE <=0 || rand < exp(-beta*DeltaE)){
+    for(int i = 0;i<NMAX;i++){
+      cities[i].lon = temp[i].lon;
+      cities[i].lat = temp[i].lat;
+    }
+    success++;
+  }
+  free(temp);
+}
+
+
+double distance(COORD arr[NMAX],int i,int j){
+  double dLat = arr[i].lat - arr[j].lat;
+  double dLong = arr[i].lon - arr[j].lon;
+  double a = pow(sin(convert*dLat/2.),2) +
+    cos(arr[j].lat*convert)*cos(arr[i].lat*convert)*
+    pow((sin(dLong*convert/2.)),2);
+  double c = 2*atan2(sqrt(a),sqrt(1-a));
+  return R*c;
+}
+
+int cross(double x1,double x2,double axis){
+  if((x1 > axis && x2 < axis) || (x2 > axis && x1<axis)){
+    return 1;
+  }
+  return 0;
+}
+
+double energy(COORD arr[NMAX],int energyflag){
+  double sum = 0.0;
+  for(int i = 1;i<=NMAX-1;i++){
+    double iE = distance(arr,i,i-1);
+    sum+= iE;
+    if(energyflag == 1){
+      for(int i = 0;i<TIMEZONES;i++){
+	if(cross(arr[i].lon,arr[i-1].lon,zone[i]) ==1){
+	  iE += 100000;
+	}
+      }
+    }
+  }
+    
+  double iE = distance(arr,0,NMAX-1);
+  sum+= iE;
+  if(energyflag == 1){
+    for(int i = 0;i<TIMEZONES;i++){
+      if(cross(arr[0].lon,arr[NMAX-1].lon,zone[i]) ==1){
+	iE += 100000;
+      }
+    }
+  }
+  return sum;
+}
+
+
+// fill the array of city locations
+int GetData(char* fname, COORD cities[NMAX]){
+  FILE* fp=fopen(fname,"r");
+  const int bufsiz=1000;
+  char line[bufsiz+1];
+  int ncity=0;
+  while(1){
+    fgets(line,bufsiz,fp);
+    if (line[0]=='#') continue;  // skip comments
+    if (feof(fp)) break;
+    // we only scan for two numbers at start of each line
+    sscanf(line,"%lf %lf",&cities[ncity].lon,&cities[ncity].lat);    
+    ncity++;
+  }
+  fclose(fp);
+  return ncity;
+}
+
+int main(int argc, char *argv[]){
+  if(argc<=2){
+    printf("Ignoring time zone penalties\n");
+  }
+  if(argc>2){
+    printf("Using time zone penalties\n");
+    energyflag = 1;
+  }
+  int ncity=GetData(argv[1],cities);
+  printf("Read %d cities from data file\n",ncity);
+  int itherm,ntherm = 100*NMAX;
+  double beta,Tmax,T;
+  FILE *output;
+  const char *OutputFileName = "salesman_order_2.dat";
+
+  printf("Beginning Distance between cities\n");
+  printf("%lf\n",energy(cities,energyflag));
+  
+
+  
+  
+  
+  output = fopen(OutputFileName,"w");
+  
+  srand48((long)time(0));
+  //printf("Enter starting value (maximum) of temperature T (=1/beta):\n");
+  //scanf("%lf", &Tmax);
+  /* If using slurm batch process, define Tmax non-interactively */
+  Tmax = 15000000;
+  T = Tmax;
+
+  for(int i = 0;i<1000;i++){
+    beta = 1/T;
+    update_order(beta);
+  }
+  
+  
+  while(success>0){
+    success=0;
+    beta = 1/T;
+    for(itherm=0;itherm<ntherm;itherm++){
+      update_order(beta);
+    }
+    T = T*0.9;
+  }
+  
+  
+  for(int i = 0;i<NMAX;i++){
+    fprintf(output,"%lf %lf\n",cities[i].lon,cities[i].lat);
+  }
+    
+  printf("Ending Distance between cities\n");
+  printf("%lf\n",energy(cities,energyflag));
+  
+  
+  return 0;
+}
