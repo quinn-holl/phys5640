@@ -25,7 +25,6 @@ const double RSTART = 0.15;
 const double REND = 0.25;
 const double PHISTART = 0;
 const double PHIEND = .062; //.062 radians
-const int Mpts = 100;  
 
 
 // generic code to do one iteration of finite difference method
@@ -128,13 +127,12 @@ void fillGraph(TGraph2D* tg, const vector<vector<double>> &V, double deltaR, dou
       double theta = (j-1)*deltaP;
       double x = r*cos(theta);
       double y = r*sin(theta);
-      printf("%lf: x    %lf:  y, %lf   value\n",x,y,V[i][j]);
       tg->SetPoint(tg->GetN(),x,y,V[i][j]);
     }
   }
 }
 
-TGraph2D* LaplaceLine(int maxIter = 100, double eps = 0.001, int Npts = 100, int Mpts = 30, TCanvas *tc =0, int rate = 10){
+TGraph2D* LaplaceLine(int maxIter = 100, double eps = 0.001, int Npts = 100, int Mpts = 100, TCanvas *tc =0, int rate = 10){
   double L = 0;
   double Vin = -100;
   double Vout = 100;
@@ -244,7 +242,7 @@ int main(int argc, char *argv[]){
     }
   }
  
-  auto tg=LaplaceLine(maxIter,eps,Npts,Mpts,tc,rate);
+  auto tg=LaplaceLine(maxIter,eps,Npts,Npts,tc,rate);
 
   // display final result
   if (!tc) tc=new TCanvas();
