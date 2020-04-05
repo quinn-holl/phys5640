@@ -24,7 +24,7 @@ const double RHO = 3.33;
 const double RSTART = 0.15;
 const double REND = 0.25;
 const double PHISTART = 0;
-const double PHIEND = .062; //.062 radians
+const double PHIEND = 20*0.0175; //degrees to radians
 
 
 // generic code to do one iteration of finite difference method
