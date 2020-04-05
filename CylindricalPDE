@@ -62,13 +62,10 @@ double iterateJ(vector<vector<double>> &V, double L){
       double Vnew = (V1+V2+V3)/((2/(pow(deltaR,2))) + (2/(pow(deltaP*r,2))));
       double dV = fabs(Vnew-V[i][j]);
       dVmax = std::max(dVmax,dV);
-      if( (j>= phiEnd || j <= phiStart) && i== rstart){
+      if( (j>= phiEnd || j <= phiStart) && (i== rstart || i== rend)){
 	continue; //keeping constant potential
       }
-      if( (j>= phiEnd || j <= phiStart) && i == rend){
-	continue; //keeping constant potential
-      }
-      if( j == np-1 ){  //B.C. for cylindrical coordinates
+      else if( j == np-1 ){  //B.C. for cylindrical coordinates
 	V[i][j]  = V[i][0];
       }
       else{
