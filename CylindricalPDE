@@ -246,7 +246,7 @@ int main(int argc, char *argv[]){
 
   // display final result
   if (!tc) tc=new TCanvas();
-  tg->Draw("surf");              // explore other drawing options!
+  tg->Draw("SURF3");              // explore other drawing options!
   
   cout << "Press ^c to exit" << endl;
   theApp.SetIdleTimer(30,".q");  // set up a failsafe timer to end the program  
