@@ -115,7 +115,7 @@ double iterateGS(vector<vector<double>> &V){
 
 
 
-*/
+
 //Uncomment out if you want cylindrical solver
 
 void fillGraph(TGraph2D* tg, const vector<vector<double>> &V, double deltaR, double deltaP, TBox *range=0){
