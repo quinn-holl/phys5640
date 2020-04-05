@@ -19,6 +19,7 @@ const double XBEGIN = 0.35;
 const double XEND = 0.65;
 const double YBEGIN = 0.45;
 const double YEND = 0.55;
+const int THICK = 1;
 
 // generic code to do one iteration of finite difference method
 // Jacobi Method
@@ -36,10 +37,14 @@ double iterateJ(vector<vector<double>> &V){
       double Vnew = 0.25*(Vtmp[i+1][j]+Vtmp[i-1][j]+Vtmp[i][j+1]+Vtmp[i][j-1]);
       double dV=fabs(Vnew-V[i][j]);
       dVmax=std::max(dVmax,dV);    // keep track of max change in this sweep
-      if( (i >= xstart && i <= xend) && ( j == ystart || j == yend)){
-	continue;   //dont alter voltage of capacitors
-      }
-      else{
+      if( (i >= xstart && i <= xend) && (j>= ystart-THICK) && (j <= ystart+THICK)){
+	Vnew +=  M_PI*RHO*delta;
+	V[i][j] = Vnew;
+	//continue;   //dont alter voltage of capacitors
+      } if((i >= xstart && i <= xend) && (j>= yend-THICK) && (j <= yend+THICK){
+	    Vnew -= M_PI*RHO*delta;
+	     V[i][j] = Vnew;
+      }else{
 	V[i][j] = Vnew;
       }
     }
